@@ -48,9 +48,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'users',
     'product',
-    # 'orders',
-    # 'payment',
-    # 'cart',
+    'orders',
+    'payment',
+    'cart',
 ]
 
 MIDDLEWARE = [
@@ -136,6 +136,21 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+
+# PAYSTACK_PUBLIC_KEY = 'pk_test_xxx'
+# PAYSTACK_SECRET_KEY = 'sk_test_xxx'
+# PAYSTACK_BASE_URL = 'https://api.paystack.co'
+
+# Stripe
+STRIPE_SECRET_KEY = 'sk_test_xxx'
+STRIPE_WEBHOOK_SECRET = 'whsec_xxx'
+
+# PayPal
+PAYPAL_CLIENT_ID = 'client_id_xxx'
+PAYPAL_CLIENT_SECRET = 'client_secret_xxx'
+PAYPAL_BASE_URL = 'https://api-m.sandbox.paypal.com'  # Use sandbox for testing
+
 
 
 # Internationalization
