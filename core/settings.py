@@ -113,10 +113,15 @@ REST_FRAMEWORK = {
     ),
 }
 # CORS Configuration
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:4000",
+#     "https://ugtfstore.netlify.app",
+#     "https://juvejournalimsu.netlify.app",
+# ]
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4000",
-    "https://mejhpgs.netlify.app",
-    "https://juvejournalimsu.netlify.app",
+    "https://ugtfstore.netlify.app",
 ]
 
 # Password validation
