@@ -21,10 +21,10 @@ ENV PYTHONUNBUFFERED=1
 
 
 # Collect static files
-# RUN python manage.py collectstatic
+RUN python manage.py collectstatic
 
 # Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "ugtf_site.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "core.wsgi:application"]
 
 
 # Command to run your app (change as needed)
