@@ -1,0 +1,127 @@
+# UGTF CI/CD Pipeline for StoreAPIs (Backend)
+# Quality Gates: Build -> Deploy -> Deep Health Check -> Notify
+name: StoreAPI CI/CD to Cloud Run
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: top-cedar-471512-k3
+  PROJECT_NUMBER: 30228073381
+  REGION: us-east1
+  SERVICE_NAME: store-api
+  ARTIFACT_REPO: storeapi
+  IMAGE_NAME: backend-v1
+  # ⚠️ Update this URL after the first successful deploy
+  SERVICE_URL: https://store-api-30228073381.us-east1.run.app
+
+jobs:
+  # 1️⃣ Build and Deploy
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/ugtf-github-pool/providers/github-actions
+          service_account: github-runner-ugtf@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Build and Push Docker Image
+        id: build
+        run: |
+          IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Building Backend Container: $IMAGE_TAG"
+          
+          docker build -t "$IMAGE_TAG" .
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+          docker push "$IMAGE_TAG"
+          echo "image=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: ${{ steps.build.outputs.image }}
+          wait: true
+          # API is Public. Remove this line if it should be Private.
+          flags: '--allow-unauthenticated'
+          env_vars: |
+            DJANGO_ENV=production
+            SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}
+            ALLOWED_HOSTS=*
+
+  # 2️⃣ Deep Health Check (Backend Quality Gate)
+  health-check:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify API Availability
+        run: |
+          echo "🏥 Checking API health at ${{ env.SERVICE_URL }}..."
+          # Retries up to 12 times (60 seconds) to allow for Cold Starts
+          for i in {1..12}; do
+            # We accept 200 (OK), 404 (Not Found - common for API root), or 403 (Forbidden)
+            # We reject 500 (Server Error) or 502/503/504 (Gateway/Timeout Errors)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.SERVICE_URL }})
+            echo "Attempt $i: Status $STATUS"
+            
+            if [[ "$STATUS" == "200" || "$STATUS" == "404" || "$STATUS" == "403" ]]; then
+              echo "✅ API is responsive (Status $STATUS)"
+              exit 0
+            fi
+            
+            if [[ "$STATUS" == "000" ]]; then
+               echo "⚠️  Connection refused/timeout. Waiting..."
+            else
+               echo "⚠️  Received Status $STATUS. Waiting..."
+            fi
+            sleep 5
+          done
+          echo "❌ API failed to respond correctly within 60 seconds."
+          exit 1
+
+  # 3️⃣ Notify
+  notify:
+    needs: [build-and-deploy, health-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send Email Summary
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "🚀 StoreAPI Backend Deployment: ${{ job.status }}"
+          to: ono@ugtf.org
+          from: UGTF CI Bot
+          body: |
+             Backend API Deployment Complete.
+             
+             Service: ${{ env.SERVICE_NAME }}
+             URL: ${{ env.SERVICE_URL }}
+             
+             Status: ${{ job.status }}
+             
+             (Note: Lighthouse is not run on Backends/APIs)
